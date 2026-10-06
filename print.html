@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>พิมพ์รายงาน</title>
+<!--
+  หน้าเปล่าสำหรับพิมพ์รายงานจากระบบประเมินผล (Safari บน Mac / iPhone / iPad)
+  Safari สั่งพิมพ์จากเว็บแอป Apps Script แล้วได้หน้าของ Google ที่ครอบแอปอยู่ ไม่ใช่ตัวรายงาน — ระบบจึงเปิดหน้านี้ในแท็บใหม่
+  แล้วส่งเอกสารมาทาง postMessage หน้านี้ไม่เก็บและไม่ส่งข้อมูลไปที่ใด (อยู่ในหน่วยความจำของแท็บเท่านั้น)
+-->
+<style>
+  body { margin: 0; }
+  #pkd-wait { font: 16px/1.6 sans-serif; color: #4b5563; padding: 28px 20px; }
+  #pkd-bar { position: sticky; top: 0; z-index: 99; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; font: 14px/1.4 sans-serif; color: #4b5563; }
+  #pkd-bar button { display: inline-block !important; font: 600 16px sans-serif; min-height: 44px; padding: 0 18px; border: none; border-radius: 10px; background: #be185d; color: #fff; cursor: pointer; }
+  @media print { #pkd-bar, #pkd-wait { display: none !important; } }
+</style>
+</head>
+<body>
+<div id="pkd-wait">กำลังเตรียมเอกสาร...</div>
+<script>
+(function () {
+  var done = false, wait = document.getElementById('pkd-wait');
+  // ผู้ส่งเอกสาร = หน้าที่เปิดแท็บนี้ (หรือหน้าที่ฝังหน้านี้ไว้ — ใช้ตอนทดสอบ)
+  var sender = window.opener || (window.parent !== window ? window.parent : null);
+  // รับเอกสารจากเว็บแอป Apps Script (โดเมน *.googleusercontent.com) ที่เป็นผู้เปิดแท็บนี้เท่านั้น
+  function trusted(origin) {
+    if (/^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(origin)) return true;
+    return location.hostname === 'localhost' && /^http:\/\/localhost:\d+$/.test(origin);   // ทดสอบในเครื่อง
+  }
+  if (!sender) { wait.textContent = 'หน้านี้ใช้สำหรับพิมพ์รายงานจากระบบประเมินผล กรุณากดปุ่มพิมพ์จากในระบบ'; return; }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (done || e.source !== sender || !trusted(e.origin) || !d || d.type !== 'pkd-print') return;
+    done = true;
+    document.title = String(d.title || 'รายงาน');
+    document.head.insertAdjacentHTML('beforeend', String(d.head || ''));
+    document.body.innerHTML = '<div id="pkd-bar"><button type="button" id="pkd-go">พิมพ์ / บันทึก PDF</button><span>ถ้าหน้าต่างพิมพ์ไม่ขึ้นเอง ให้กดปุ่มนี้</span></div>' + String(d.body || '');
+    document.getElementById('pkd-go').onclick = function () { window.print(); };
+    var ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    if (location.search.indexOf('noauto') < 0) ready.then(function () { setTimeout(function () { try { window.print(); } catch (err) {} }, 700); });
+  });
+  // บอกผู้เปิดว่าพร้อมรับเอกสาร (ส่งซ้ำจนกว่าจะได้รับ เผื่อฝั่งโน้นยังเตรียมไม่เสร็จ)
+  var n = 0, t = setInterval(function () {
+    if (done || ++n > 400) { clearInterval(t); if (!done) wait.textContent = 'ไม่ได้รับเอกสารจากระบบ กรุณาปิดแท็บนี้แล้วกดพิมพ์อีกครั้ง'; return; }
+    try { sender.postMessage('pkd-print-ready', '*'); } catch (err) {}
+  }, 300);
+})();
+</script>
+</body>
+</html>
