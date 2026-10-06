@@ -55,7 +55,9 @@
     .bar select { height: 40px; padding: 0 10px; font: inherit; border: 1px solid #d1d5db; border-radius: 10px; background: #fff; color: var(--text); }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
     .card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
-    .sec-title { font-size: 1.05rem; font-weight: 700; margin: 22px 0 10px; }
+    .terms { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #eceef1; border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+    .term { min-height: 44px; border: none; border-radius: 9px; background: transparent; color: var(--text-2); font-weight: 600; font-size: 0.98rem; }
+    .term.on { background: #fff; color: var(--primary-dark); box-shadow: 0 1px 2px rgba(16,24,40,0.12); }
     .empty { text-align: center; color: var(--text-2); padding: 36px 16px; }
     .empty b { display: block; color: var(--text); font-size: 1.05rem; margin-bottom: 4px; }
     .note { font-size: 0.85rem; color: var(--text-2); margin-bottom: 12px; }
@@ -97,7 +99,7 @@
     @keyframes sp { to { transform: rotate(360deg); } }
     @media (max-width: 420px) { .card { padding: 14px 12px; } .lv { min-width: 0; padding: 2px 7px; font-size: 0.78rem; } .stat b { font-size: 1.25rem; } }
     @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2s; } }
-    @media print { .top { position: static; } .btn-out, .bar select, .more { display: none !important; } .ab-text.clamp { display: block; } .card { break-inside: avoid; } body { background: #fff; } }
+    @media print { .top { position: static; } .btn-out, .bar select, .more, .term:not(.on) { display: none !important; } .ab-text.clamp { display: block; } .card { break-inside: avoid; } body { background: #fff; } }
   </style>
 </head>
 <body>
@@ -198,7 +200,8 @@ function show(d) {
   sel.hidden = d.years.length < 2;
   $('year-title').textContent = d.year ? 'ปีการศึกษา ' + d.year + (d.data && d.data.grade ? ' · ' + d.data.grade : '') : 'ผลการเรียน';
   var x = d.data, h;
-  if (!x || x.empty) h = '<div class="card empty"><b>ยังไม่ประกาศผลการเรียน</b>' + (d.year ? 'ปีการศึกษา ' + esc(d.year) + ' ยังไม่มีผลการเรียนที่ประกาศ' : 'โรงเรียนยังไม่ได้ประกาศผลการเรียน') + '<br>กรุณากลับมาดูใหม่ภายหลัง</div>';
+  if (x && x.mode === 'sec') h = secHtml(x, d.year);
+  else if (!x || x.empty) h = '<div class="card empty"><b>ยังไม่ประกาศผลการเรียน</b>' + (d.year ? 'ปีการศึกษา ' + esc(d.year) + ' ยังไม่มีผลการเรียนที่ประกาศ' : 'โรงเรียนยังไม่ได้ประกาศผลการเรียน') + '<br>กรุณากลับมาดูใหม่ภายหลัง</div>';
   else h = x.mode === 'sec' ? secHtml(x) : priHtml(x);
   $('content').innerHTML = h;
   window.scrollTo(0, 0);
@@ -252,12 +255,20 @@ function gradeCell(g) {
   var bad = g === 0 || g === '0' || g === 'ร' || g === 'มส';
   return '<span class="grade' + (bad ? ' fail' : '') + '">' + esc(g) + '</span>';
 }
-function secHtml(x) {
-  var h = '';
-  x.terms.forEach(function(t) {
+// มัธยมดูผลทีละภาคเรียน: แท็บภาคเรียนที่ 1 / 2 แสดงเสมอ (ภาคที่ยังไม่ประกาศผลขึ้นข้อความแทน)
+var SEC = null, SEC_TERM = '';
+function secPick(t) { SEC_TERM = String(t); $('content').innerHTML = secHtml(SEC.x, SEC.year, true); }
+function secHtml(x, year, keep) {
+  var terms = x.terms || [];
+  if (!keep) { SEC = { x: x, year: year }; SEC_TERM = terms.length ? terms[terms.length - 1].term : '1'; }
+  var h = '<div class="terms" role="tablist" aria-label="ภาคเรียน">' + ['1', '2'].map(function(n) {
+    return '<button type="button" role="tab" aria-selected="' + (n === SEC_TERM) + '" class="term' + (n === SEC_TERM ? ' on' : '') + '" onclick="secPick(' + n + ')">ภาคเรียนที่ ' + n + '</button>'; }).join('') + '</div>';
+  var shown = terms.filter(function(t) { return String(t.term) === SEC_TERM; });
+  if (!shown.length) return h + '<div class="card empty"><b>ยังไม่ประกาศผลการเรียน</b>ภาคเรียนที่ ' + esc(SEC_TERM) + (year ? ' ปีการศึกษา ' + esc(year) : '') + ' ยังไม่มีผลการเรียนที่ประกาศ<br>กรุณากลับมาดูใหม่ภายหลัง</div>';
+  shown.forEach(function(t) {
     var cr = t.credits || { basic: {}, extra: {} };
     var studied = (cr.basic.studied || 0) + (cr.extra.studied || 0), earned = (cr.basic.earned || 0) + (cr.extra.earned || 0);
-    h += '<h3 class="sec-title">ภาคเรียนที่ ' + esc(t.term) + '</h3><div class="stats">' +
+    h += '<div class="stats">' +
          '<div class="stat"><span>เกรดเฉลี่ย</span>' + (t.gpa === null || t.gpa === undefined ? '<b class="sm">ยังไม่ครบ</b>' : '<b>' + Number(t.gpa).toFixed(2) + '</b>') + '</div>' +
          '<div class="stat"><span>หน่วยกิตที่เรียน</span><b>' + studied + '</b></div><div class="stat"><span>หน่วยกิตที่ได้</span><b>' + earned + '</b></div></div>';
     h += '<section class="card"><table><thead><tr><th>วิชา</th><th>หน่วยกิต</th><th>คะแนน</th><th>ผลการเรียน</th></tr></thead><tbody>';
